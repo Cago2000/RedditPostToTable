@@ -1,6 +1,5 @@
 import praw
 import pandas as pd
-import xlsxwriter
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Alignment, Font
 
@@ -17,17 +16,19 @@ def create_reddit_instance(client_id, client_secret, user_agent):
 
 def get_submissions(reddit, subreddit, keywords, limit, sort_type):
     matching_submissions = []
+    match sort_type:
+        case 'hot':
+            submissions = reddit.subreddit(subreddit).hot(limit=limit)
+        case'new':
+            submissions = reddit.subreddit(subreddit).new(limit=limit)
+        case 'rising':
+            submissions = reddit.subreddit(subreddit).rising(limit=limit)
+        case 'top':
+            submissions = reddit.subreddit(subreddit).top(limit=limit)
+        case _:
+            submissions = None
     for keyword in keywords:
         print(f"Searching for keyword: {keyword}")
-        if sort_type == 'hot':
-            submissions = reddit.subreddit(subreddit).hot(limit=limit)
-        elif sort_type == 'new':
-            submissions = reddit.subreddit(subreddit).new(limit=limit)
-        elif sort_type == 'rising':
-            submissions = reddit.subreddit(subreddit).rising(limit=limit)
-        elif sort_type == 'top':
-            submissions = reddit.subreddit(subreddit).top(limit=limit)
-
         for submission in submissions:
             if keyword.lower() in submission.title.lower() or keyword.lower() in submission.selftext.lower():
                 matching_submissions.append(submission)  # Save submission if it matches
@@ -60,13 +61,11 @@ def load_submission_data_to_table(submissions):
             rows.extend(extract_comments(submission, top_level_comment, depth=2, comment_number=comment_number))
             comment_number += 1
 
-        # Add an empty row to separate posts
         rows.append({
             "Username": "",
             "Content": "",
             "Depth": 0
         })
-        # Add another empty row for better separation
         rows.append({
             "Username": "",
             "Content": "",
@@ -108,7 +107,7 @@ def save_data_to_xlsx(reddit, subreddit,keywords, limit, sort_type, filename="re
         adjusted_width = (max_length + 2)
         ws.column_dimensions[column].width = adjusted_width
 
-    ws = make_keyword_cells_bold_in_cells(keywords, ws)
+    make_keyword_cells_bold_in_cells(keywords, ws)
     wb.save(filename)
     print(f"Data saved to {filename}")
 
@@ -143,13 +142,12 @@ def make_keyword_cells_bold_in_cells(keywords, ws):
                         # Change the entire cell to bold
                         cell.font = Font(bold=True)
                         break  # Exit after the first keyword is found
-    return ws
+
 
 def get_client_credentials():
     with open('client_credentials.txt', 'r') as file:
         for line in file:
-            line = line.strip()
-            name, value = line.split('=')
+            name, value = line.strip().split('=')
             if name == 'client_id':
                 client_id = value
             elif name == 'client_secret':
@@ -165,8 +163,8 @@ def main():
 
     subreddit = 'pokemon'
     keywords = ["charizard"]
-    sort_type = 'rising'  # Options: 'hot', 'new', 'rising', 'top'
-    limit = 50
+    sort_type = 'hot'  # Options: 'hot', 'new', 'rising', 'top'
+    limit = 5  # Amount of submissions being considered
 
     # Search posts and save them to a CSV
     save_data_to_xlsx(reddit, subreddit, keywords, limit=limit, sort_type=sort_type, filename="reddit_posts.xlsx")
