@@ -14,40 +14,34 @@ def create_reddit_instance(client_id, client_secret, user_agent):
     return reddit
 
 
-def get_submissions(reddit, subreddit, keywords, limit, sort_type):
-    matching_submissions = []
+def get_submissions(reddit, subreddit, limit, sort_type):
     match sort_type:
         case 'hot':
-            submissions = reddit.subreddit(subreddit).hot(limit=limit)
+            submissions = reddit.subreddit(subreddit).hot(limit=limit+1)
         case'new':
-            submissions = reddit.subreddit(subreddit).new(limit=limit)
+            submissions = reddit.subreddit(subreddit).new(limit=limit+1)
         case 'rising':
-            submissions = reddit.subreddit(subreddit).rising(limit=limit)
+            submissions = reddit.subreddit(subreddit).rising(limit=limit+1)
         case 'top':
-            submissions = reddit.subreddit(subreddit).top(limit=limit)
+            submissions = reddit.subreddit(subreddit).top(limit=limit+1)
         case _:
             submissions = None
-    for keyword in keywords:
-        print(f"Searching for keyword: {keyword}")
-        for submission in submissions:
-            if keyword.lower() in submission.title.lower() or keyword.lower() in submission.selftext.lower():
-                matching_submissions.append(submission)  # Save submission if it matches
-            submission.comments.replace_more(limit=0)
-            for comment in submission.comments.list():
-                if keyword.lower() in comment.body:
-                    matching_submissions.append(submission)
-    return matching_submissions
+    return submissions
 
 
-def load_submission_data_to_table(submissions):
+def load_submission_data_to_table(submissions, keywords):
     rows = []
     post_number = 1
     for submission in submissions:
+        post_has_keyword = False
         if submission.author == 'PokeUpdateBot':
             continue
+        for keyword in keywords:
+            if keyword in submission.title.lower() or keyword in submission.selftext.lower():
+                post_has_keyword = True
         rows.append({
             "Username": str(submission.author),
-            "Content": f"Post {post_number}|-- {submission.title}:\n{submission.selftext.replace('\n', ' ')}",
+            "Content": f'Post {post_number}|-- {submission.title}:\n{submission.selftext.replace('\n', ' ')}',
             "URL": submission.url,
             "Depth": 0
         })
@@ -57,27 +51,56 @@ def load_submission_data_to_table(submissions):
 
         # Process top-level comments
         comment_number = 1  # Reset comment number for each post
+        conversation_has_keyword = False
         for top_level_comment in submission.comments:
-            rows.extend(extract_comments(submission, top_level_comment, depth=2, comment_number=comment_number))
+            current_rows = extract_comments(submission, top_level_comment, keywords, conversation_has_keyword, depth=2, comment_number=comment_number)
             comment_number += 1
+        if len(current_rows) > 0: 
+            rows.extend(current_rows)
 
-        rows.append({
+            rows.append({
             "Username": "",
             "Content": "",
             "Depth": 0
-        })
-        rows.append({
-            "Username": "",
-            "Content": "",
-            "Depth": 0
-        })
+            })
+            rows.append({
+                "Username": "",
+                "Content": "",
+                "Depth": 0
+            })
+
+        else:
+            if not post_has_keyword:
+                rows.pop(-1)
     return rows
 
 
+def extract_comments(submission, comment, keywords, conversation_has_keyword, depth=1, comment_number=1):
+    comments_data = []
+    indent_type = "Comment" if depth > 1 else "Post"
+    indent = f'{indent_type} {comment_number} |-- '
+    indented_comment = '    ' * (depth - 1) + indent + comment.body.replace('\n', ' ')  # Remove unnecessary line breaks
+    for keyword in keywords:
+        if keyword.lower() in comment.body.lower() or conversation_has_keyword:
+            conversation_has_keyword = True
+            comments_data.append({
+                "Username": str(comment.author),
+                "Content": indented_comment,
+                "URL": f"https://www.reddit.com{submission.permalink}{comment.id}",
+                "Depth": depth
+        })
+    reply_number = 1
+    for reply in comment.replies:
+        current_row = extract_comments(submission, reply, keywords, conversation_has_keyword, depth + 1, reply_number) # Recurse into replies
+        comments_data.extend(current_row)
+        reply_number += 1
+    return comments_data
+
+
 # Function to search Reddit posts and save them with comments in a tree structure to an Excel file
-def save_data_to_xlsx(reddit, subreddit,keywords, limit, sort_type, filename="reddit_posts_tree.xlsx"):
-    submissions = get_submissions(reddit, subreddit, keywords, limit, sort_type)
-    rows = load_submission_data_to_table(submissions)
+def save_data_to_xlsx(reddit, subreddit, keywords, limit, sort_type, filename="reddit_posts_tree.xlsx"):
+    submissions = get_submissions(reddit, subreddit, limit, sort_type)
+    rows = load_submission_data_to_table(submissions, keywords)
     df = pd.DataFrame(rows)
     wb = Workbook()
     ws = wb.active
@@ -112,33 +135,13 @@ def save_data_to_xlsx(reddit, subreddit,keywords, limit, sort_type, filename="re
     print(f"Data saved to {filename}")
 
 
-def extract_comments(submission, comment, depth=1, comment_number=1):
-    comments_data = []
-    indent_type = "Comment" if depth > 1 else "Post"
-    indent = f'{indent_type} {comment_number} |-- '
-    indented_comment = '    ' * (depth - 1) + indent + comment.body.replace('\n', ' ')  # Remove unnecessary line breaks
-    comments_data.append({
-        "Username": str(comment.author),
-        "Content": indented_comment,
-        "URL": f"https://www.reddit.com{submission.permalink}{comment.id}",
-        "Depth": depth
-    })
-
-    reply_number = 1
-    for reply in comment.replies:
-        comments_data.extend(extract_comments(submission, reply, depth + 1, reply_number))  # Recurse into replies
-        reply_number += 1
-
-    return comments_data
-
-
 def make_keyword_cells_bold_in_cells(keywords, ws):
     for row in ws.iter_rows():
         for cell in row:
             if isinstance(cell.value, str):
                 # Check each keyword
                 for keyword in keywords:
-                    if keyword in cell.value:
+                    if keyword.lower() in cell.value.lower():
                         # Change the entire cell to bold
                         cell.font = Font(bold=True)
                         break  # Exit after the first keyword is found
@@ -162,9 +165,9 @@ def main():
     reddit = create_reddit_instance(client_id, client_secret, user_agent)
 
     subreddit = 'pokemon'
-    keywords = ["charizard"]
+    keywords = ["pokemon"]
     sort_type = 'hot'  # Options: 'hot', 'new', 'rising', 'top'
-    limit = 5  # Amount of submissions being considered
+    limit = 30  # Amount of submissions being considered
 
     # Search posts and save them to a CSV
     save_data_to_xlsx(reddit, subreddit, keywords, limit=limit, sort_type=sort_type, filename="reddit_posts.xlsx")
