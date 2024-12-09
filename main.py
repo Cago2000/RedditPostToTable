@@ -46,55 +46,55 @@ def load_submission_data_to_table(submissions, keywords):
             "Depth": 0
         })
         post_number += 1
-
         submission.comments.replace_more(limit=0)  # Load all comments
-
         # Process top-level comments
         comment_number = 1  # Reset comment number for each post
-        conversation_has_keyword = False
         for top_level_comment in submission.comments:
-            current_rows = extract_comments(submission, top_level_comment, keywords, conversation_has_keyword, depth=2, comment_number=comment_number)
-            comment_number += 1
-        if len(current_rows) > 0: 
-            rows.extend(current_rows)
-
+            current_rows, end_has_keyword = (
+                extract_comments(submission, top_level_comment, keywords,
+                                 depth=2, comment_number=comment_number))
+            if end_has_keyword:
+                comment_number += 1
+                rows.extend(current_rows)
+        if comment_number == 1:
+            rows.pop(-1)
+        else:
             rows.append({
-            "Username": "",
-            "Content": "",
-            "Depth": 0
+                "Username": "",
+                "Content": "",
+                "Depth": 0
             })
             rows.append({
                 "Username": "",
                 "Content": "",
                 "Depth": 0
             })
-
-        else:
-            if not post_has_keyword:
-                rows.pop(-1)
     return rows
 
 
-def extract_comments(submission, comment, keywords, conversation_has_keyword, depth=1, comment_number=1):
+def extract_comments(submission, comment, keywords, depth=1, comment_number=1):
     comments_data = []
     indent_type = "Comment" if depth > 1 else "Post"
     indent = f'{indent_type} {comment_number} |-- '
     indented_comment = '    ' * (depth - 1) + indent + comment.body.replace('\n', ' ')  # Remove unnecessary line breaks
-    for keyword in keywords:
-        if keyword.lower() in comment.body.lower() or conversation_has_keyword:
-            conversation_has_keyword = True
-            comments_data.append({
-                "Username": str(comment.author),
-                "Content": indented_comment,
-                "URL": f"https://www.reddit.com{submission.permalink}{comment.id}",
-                "Depth": depth
-        })
+    comments_data.append({
+        "Username": str(comment.author),
+        "Content": indented_comment,
+        "URL": f"https://www.reddit.com{submission.permalink}{comment.id}",
+        "Depth": depth
+    })
+    if len(comment.replies) <= 0:
+        for keyword in keywords:
+            if keyword.lower() in comment.body.lower():
+                return comments_data, True
     reply_number = 1
+    end_has_keyword = False
     for reply in comment.replies:
-        current_row = extract_comments(submission, reply, keywords, conversation_has_keyword, depth + 1, reply_number) # Recurse into replies
-        comments_data.extend(current_row)
+        current_row, end_has_keyword = extract_comments(submission, reply, keywords, depth + 1, reply_number) # Recurse into replies
+        if end_has_keyword:
+            comments_data.extend(current_row)
         reply_number += 1
-    return comments_data
+    return comments_data, end_has_keyword
 
 
 # Function to search Reddit posts and save them with comments in a tree structure to an Excel file

@@ -6,5 +6,9 @@
 # Datasource local storage ignored files
 /dataSources/
 /dataSources.local.xml
+*.xlsx#
+*.xlsx
+*.ods
 client_credentials.txt
+
 
