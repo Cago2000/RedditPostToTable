@@ -1,3 +1,5 @@
+import time
+
 import praw
 import pandas as pd
 from openpyxl import Workbook
@@ -14,7 +16,7 @@ def create_reddit_instance(client_id, client_secret, user_agent):
     return reddit
 
 
-def load_submission_data_to_table(subreddit, keywords, amount, sort_type):
+def load_submission_data_to_table(subreddit, keywords, amount, sort_type, time_limit):
     rows = []
     post_number = 1
     added_rows = 0
@@ -30,15 +32,19 @@ def load_submission_data_to_table(subreddit, keywords, amount, sort_type):
         case _:
             return
 
+    start_time = time.time()
     for submission in ranking(limit=None):
+        elapsed_time = time.time() - start_time
+        minutes, seconds = divmod(int(elapsed_time), 60)
+        print(f"Time passed: {minutes:02}:{seconds:02}")
         if added_rows >= amount:
+            print("Amount reached... stopping search.")
             break
-        post_has_keyword = False
+        if elapsed_time > time_limit:
+            print("Time limit reached... stopping search.")
+            break
         if submission.author == 'PokeUpdateBot':
             continue
-        for keyword in keywords:
-            if keyword in submission.title.lower() or keyword in submission.selftext.lower():
-                post_has_keyword = True
         rows.append({
             "Username": str(submission.author),
             "Content": f'Post {post_number}|-- {submission.title}:\n{submission.selftext.replace('\n', ' ')}',
@@ -70,7 +76,7 @@ def load_submission_data_to_table(subreddit, keywords, amount, sort_type):
                 "Depth": 0
             })
             added_rows += 1
-        print(added_rows)
+        print(f'{added_rows} Posts already added to table')
     return rows
 
 
@@ -100,8 +106,8 @@ def extract_comments(submission, comment, keywords, depth=1, comment_number=1):
 
 
 # Function to search Reddit posts and save them with comments in a tree structure to an Excel file
-def save_data_to_xlsx(subreddit, keywords, amount, sort_type, filename="reddit_posts_tree.xlsx"):
-    rows = load_submission_data_to_table(subreddit, keywords, amount, sort_type)
+def save_data_to_xlsx(subreddit, keywords, amount, sort_type, time_limit, filename="reddit_posts.xlsx"):
+    rows = load_submission_data_to_table(subreddit, keywords, amount, sort_type, time_limit)
     df = pd.DataFrame(rows)
     wb = Workbook()
     ws = wb.active
@@ -168,10 +174,16 @@ def main():
     subreddit = reddit.subreddit('pokemon')
     keywords = ["pokemon"]
     sort_type = 'new'  # Options: 'hot', 'new', 'rising', 'top'
-    amount = 5  # Amount of posts that are being saved
-
+    amount = 10  # Amount of posts that are being saved
+    time_limit = 10  # Time limit for search in seconds
     # Search posts and save them to a CSV
-    save_data_to_xlsx(subreddit, keywords, amount=amount, sort_type=sort_type, filename="reddit_posts.xlsx")
+    save_data_to_xlsx(
+        subreddit=subreddit,
+        keywords=keywords,
+        amount=amount,
+        sort_type=sort_type,
+        time_limit=time_limit,
+        filename="reddit_posts.xlsx")
 
 
 if __name__ == "__main__":
