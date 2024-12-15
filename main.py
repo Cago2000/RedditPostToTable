@@ -32,52 +32,54 @@ def load_submission_data_to_table(subreddit, keywords, amount, sort_type, time_l
         case _:
             return
 
-    start_time = time.time()
-    for submission in ranking(limit=None):
-        elapsed_time = time.time() - start_time
-        minutes, seconds = divmod(int(elapsed_time), 60)
-        print(f"Time passed: {minutes:02}:{seconds:02}")
-        if added_rows >= amount:
-            print("Amount reached... stopping search.")
-            break
-        if elapsed_time > time_limit:
-            print("Time limit reached... stopping search.")
-            break
-        if submission.author == 'PokeUpdateBot':
-            continue
-        rows.append({
-            "Username": str(submission.author),
-            "Content": f'Post {post_number}|-- {submission.title}:\n{submission.selftext.replace('\n', ' ')}',
-            "URL": submission.url,
-            "Depth": 0
-        })
-        post_number += 1
-        submission.comments.replace_more(limit=0)  # Load all comments
-        # Process top-level comments
-        comment_number = 1  # Reset comment number for each post
-        for top_level_comment in submission.comments:
-            current_rows, end_has_keyword = (
-                extract_comments(submission, top_level_comment, keywords,
-                                 depth=2, comment_number=comment_number))
-            if end_has_keyword:
-                comment_number += 1
-                rows.extend(current_rows)
-        if comment_number == 1:
-            rows.pop(-1)
-        else:
+    try:
+        start_time = time.time()
+        for submission in ranking(limit=None):
+            elapsed_time = time.time() - start_time
+            minutes, seconds = divmod(int(elapsed_time), 60)
+            print(f"Time passed: {minutes:02}:{seconds:02}")
+            if added_rows >= amount:
+                print("Amount reached... stopping search.")
+                break
+            if elapsed_time > time_limit != -1:
+                print("Time limit reached... stopping search.")
+                break
+            if submission.author == 'PokeUpdateBot':
+                continue
             rows.append({
-                "Username": "",
-                "Content": "",
+                "Username": str(submission.author),
+                "Content": f'Post {post_number}|-- {submission.title}:\n{submission.selftext.replace('\n', ' ')}',
+                "URL": submission.url,
                 "Depth": 0
             })
-            rows.append({
-                "Username": "",
-                "Content": "",
-                "Depth": 0
-            })
-            added_rows += 1
-        print(f'{added_rows} Posts already added to table')
-    return rows
+            post_number += 1
+            submission.comments.replace_more(limit=0)  # Load all comments
+            # Process top-level comments
+            comment_number = 1  # Reset comment number for each post
+            for top_level_comment in submission.comments:
+                current_rows, end_has_keyword = (
+                    extract_comments(submission, top_level_comment, keywords,
+                                     depth=2, comment_number=comment_number))
+                if end_has_keyword:
+                    comment_number += 1
+                    rows.extend(current_rows)
+            if comment_number == 1:
+                rows.pop(-1)
+            else:
+                rows.append({
+                    "Username": "",
+                    "Content": "",
+                    "Depth": 0
+                })
+                rows.append({
+                    "Username": "",
+                    "Content": "",
+                    "Depth": 0
+                })
+                added_rows += 1
+            print(f'{added_rows} Posts already added to table')
+    finally:
+        return rows
 
 
 def extract_comments(submission, comment, keywords, depth=1, comment_number=1):
@@ -172,10 +174,10 @@ def main():
     reddit = create_reddit_instance(client_id, client_secret, user_agent)
 
     subreddit = reddit.subreddit('pokemon')
-    keywords = ["pokemon"]
+    keywords = ["totodile"]
     sort_type = 'new'  # Options: 'hot', 'new', 'rising', 'top'
-    amount = 10  # Amount of posts that are being saved
-    time_limit = 10  # Time limit for search in seconds
+    amount = 1000  # Amount of posts that are being saved
+    time_limit = -1  # Time limit for search in seconds, value -1 is infinite
     # Search posts and save them to a CSV
     save_data_to_xlsx(
         subreddit=subreddit,
