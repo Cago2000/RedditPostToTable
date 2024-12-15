@@ -14,25 +14,25 @@ def create_reddit_instance(client_id, client_secret, user_agent):
     return reddit
 
 
-def get_submissions(reddit, subreddit, limit, sort_type):
-    match sort_type:
-        case 'hot':
-            submissions = reddit.subreddit(subreddit).hot(limit=limit+1)
-        case'new':
-            submissions = reddit.subreddit(subreddit).new(limit=limit+1)
-        case 'rising':
-            submissions = reddit.subreddit(subreddit).rising(limit=limit+1)
-        case 'top':
-            submissions = reddit.subreddit(subreddit).top(limit=limit+1)
-        case _:
-            submissions = None
-    return submissions
-
-
-def load_submission_data_to_table(submissions, keywords):
+def load_submission_data_to_table(subreddit, keywords, amount, sort_type):
     rows = []
     post_number = 1
-    for submission in submissions:
+    added_rows = 0
+    match sort_type:
+        case 'hot':
+            ranking = subreddit.hot
+        case 'new':
+            ranking = subreddit.new
+        case 'rising':
+            ranking = subreddit.rising
+        case 'top':
+            ranking = subreddit.top
+        case _:
+            return
+
+    for submission in ranking(limit=None):
+        if added_rows >= amount:
+            break
         post_has_keyword = False
         if submission.author == 'PokeUpdateBot':
             continue
@@ -69,6 +69,8 @@ def load_submission_data_to_table(submissions, keywords):
                 "Content": "",
                 "Depth": 0
             })
+            added_rows += 1
+        print(added_rows)
     return rows
 
 
@@ -98,9 +100,8 @@ def extract_comments(submission, comment, keywords, depth=1, comment_number=1):
 
 
 # Function to search Reddit posts and save them with comments in a tree structure to an Excel file
-def save_data_to_xlsx(reddit, subreddit, keywords, limit, sort_type, filename="reddit_posts_tree.xlsx"):
-    submissions = get_submissions(reddit, subreddit, limit, sort_type)
-    rows = load_submission_data_to_table(submissions, keywords)
+def save_data_to_xlsx(subreddit, keywords, amount, sort_type, filename="reddit_posts_tree.xlsx"):
+    rows = load_submission_data_to_table(subreddit, keywords, amount, sort_type)
     df = pd.DataFrame(rows)
     wb = Workbook()
     ws = wb.active
@@ -164,13 +165,13 @@ def main():
     user_agent = "reddit search by crusader"
     reddit = create_reddit_instance(client_id, client_secret, user_agent)
 
-    subreddit = 'pokemon'
+    subreddit = reddit.subreddit('pokemon')
     keywords = ["pokemon"]
-    sort_type = 'hot'  # Options: 'hot', 'new', 'rising', 'top'
-    limit = 30  # Amount of submissions being considered
+    sort_type = 'new'  # Options: 'hot', 'new', 'rising', 'top'
+    amount = 5  # Amount of posts that are being saved
 
     # Search posts and save them to a CSV
-    save_data_to_xlsx(reddit, subreddit, keywords, limit=limit, sort_type=sort_type, filename="reddit_posts.xlsx")
+    save_data_to_xlsx(subreddit, keywords, amount=amount, sort_type=sort_type, filename="reddit_posts.xlsx")
 
 
 if __name__ == "__main__":
