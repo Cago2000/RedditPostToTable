@@ -1,5 +1,4 @@
 import time
-
 import praw
 import pandas as pd
 from openpyxl import Workbook
@@ -16,25 +15,25 @@ def create_reddit_instance(client_id, client_secret, user_agent):
     return reddit
 
 
-def load_submission_data_to_table(subreddit, keywords, amount, sort_type, time_limit):
+def load_submission_data_to_table(subreddit, keywords, amount, sort_type, time_filter, time_limit):
     rows = []
     post_number = 1
     added_rows = 0
     match sort_type:
         case 'hot':
-            ranking = subreddit.hot
+            ranking = subreddit.hot(limit=None)
         case 'new':
-            ranking = subreddit.new
+            ranking = subreddit.new(limit=None)
         case 'rising':
-            ranking = subreddit.rising
+            ranking = subreddit.rising(limit=None)
         case 'top':
-            ranking = subreddit.top
+            ranking = subreddit.top(time_filter=time_filter, limit=None)
         case _:
+            print("invalid sort_type")
             return
-
     try:
         start_time = time.time()
-        for submission in ranking(limit=None):
+        for submission in ranking:
             elapsed_time = time.time() - start_time
             minutes, seconds = divmod(int(elapsed_time), 60)
             print(f"Time passed: {minutes:02}:{seconds:02}")
@@ -78,6 +77,7 @@ def load_submission_data_to_table(subreddit, keywords, amount, sort_type, time_l
                 })
                 added_rows += 1
             print(f'{added_rows} Posts already added to table')
+        print("All posts searched... stopping search.")
     finally:
         return rows
 
@@ -108,8 +108,8 @@ def extract_comments(submission, comment, keywords, depth=1, comment_number=1):
 
 
 # Function to search Reddit posts and save them with comments in a tree structure to an Excel file
-def save_data_to_xlsx(subreddit, keywords, amount, sort_type, time_limit, filename="reddit_posts.xlsx"):
-    rows = load_submission_data_to_table(subreddit, keywords, amount, sort_type, time_limit)
+def save_data_to_xlsx(subreddit, keywords, amount, sort_type, time_filter, time_limit, filename="reddit_posts.xlsx"):
+    rows = load_submission_data_to_table(subreddit, keywords, amount, sort_type, time_filter, time_limit)
     df = pd.DataFrame(rows)
     wb = Workbook()
     ws = wb.active
@@ -174,8 +174,9 @@ def main():
     reddit = create_reddit_instance(client_id, client_secret, user_agent)
 
     subreddit = reddit.subreddit('pokemon')
-    keywords = ["totodile"]
-    sort_type = 'new'  # Options: 'hot', 'new', 'rising', 'top'
+    keywords = ["pokemon"]
+    sort_type = 'top'  # Options: 'hot', 'new', 'rising', 'top'
+    time_filter = 'day'  # Options (only works with 'top'): "all", "year", "month", "week", "day", "hour"
     amount = 1000  # Amount of posts that are being saved
     time_limit = -1  # Time limit for search in seconds, value -1 is infinite
     # Search posts and save them to a CSV
@@ -184,6 +185,7 @@ def main():
         keywords=keywords,
         amount=amount,
         sort_type=sort_type,
+        time_filter=time_filter,
         time_limit=time_limit,
         filename="reddit_posts.xlsx")
 
