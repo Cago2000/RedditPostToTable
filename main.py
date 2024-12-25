@@ -15,7 +15,7 @@ def create_reddit_instance(client_id, client_secret, user_agent):
     return reddit
 
 
-def load_submission_data_to_table(subreddit, keywords, amount, sort_type, time_filter, time_limit):
+def load_submission_data_to_table(subreddit, keywords, tags, amount, sort_type, time_filter, time_limit):
     rows = []
     post_number = 1
     added_rows = 0
@@ -39,15 +39,17 @@ def load_submission_data_to_table(subreddit, keywords, amount, sort_type, time_f
             print(f"Time passed: {minutes:02}:{seconds:02}")
             if added_rows >= amount:
                 print("Amount reached... stopping search.")
-                break
+                return rows
             if elapsed_time > time_limit != -1:
                 print("Time limit reached... stopping search.")
-                break
+                return rows
             if submission.author == 'PokeUpdateBot':
+                continue
+            if submission.link_flair_text not in tags and len(tags) > 0:
                 continue
             rows.append({
                 "Username": str(submission.author),
-                "Content": f'Post {post_number}|-- {submission.title}:\n{submission.selftext.replace('\n', ' ')}',
+                "Content": f'Post {post_number}|Tag: {submission.link_flair_text}|-- {submission.title}:\n{submission.selftext.replace('\n', ' ')}',
                 "URL": submission.url,
                 "Depth": 0
             })
@@ -56,10 +58,10 @@ def load_submission_data_to_table(subreddit, keywords, amount, sort_type, time_f
             # Process top-level comments
             comment_number = 1  # Reset comment number for each post
             for top_level_comment in submission.comments:
-                current_rows, end_has_keyword = (
+                current_rows, has_keyword = (
                     extract_comments(submission, top_level_comment, keywords,
                                      depth=2, comment_number=comment_number))
-                if end_has_keyword:
+                if has_keyword:
                     comment_number += 1
                     rows.extend(current_rows)
             if comment_number == 1:
@@ -85,7 +87,7 @@ def load_submission_data_to_table(subreddit, keywords, amount, sort_type, time_f
 def extract_comments(submission, comment, keywords, depth=1, comment_number=1):
     comments_data = []
     indent_type = "Comment" if depth > 1 else "Post"
-    indent = f'{indent_type} {comment_number} |-- '
+    indent = f'{indent_type} {comment_number} | '
     indented_comment = '    ' * (depth - 1) + indent + comment.body.replace('\n', ' ')  # Remove unnecessary line breaks
     comments_data.append({
         "Username": str(comment.author),
@@ -93,23 +95,25 @@ def extract_comments(submission, comment, keywords, depth=1, comment_number=1):
         "URL": f"https://www.reddit.com{submission.permalink}{comment.id}",
         "Depth": depth
     })
-    if len(comment.replies) <= 0:
+    if len(comment.replies) == 0:
+        if len(keywords) == 0:
+            return comments_data, True
         for keyword in keywords:
             if keyword.lower() in comment.body.lower():
                 return comments_data, True
     reply_number = 1
-    end_has_keyword = False
+    has_keyword = False
     for reply in comment.replies:
-        current_row, end_has_keyword = extract_comments(submission, reply, keywords, depth + 1, reply_number) # Recurse into replies
-        if end_has_keyword:
+        current_row, has_keyword = extract_comments(submission, reply, keywords, depth + 1, reply_number) # Recurse into replies
+        if has_keyword:
             comments_data.extend(current_row)
         reply_number += 1
-    return comments_data, end_has_keyword
+    return comments_data, has_keyword
 
 
 # Function to search Reddit posts and save them with comments in a tree structure to an Excel file
-def save_data_to_xlsx(subreddit, keywords, amount, sort_type, time_filter, time_limit, filename="reddit_posts.xlsx"):
-    rows = load_submission_data_to_table(subreddit, keywords, amount, sort_type, time_filter, time_limit)
+def save_data_to_xlsx(subreddit, keywords, tags, amount, sort_type, time_filter, time_limit, filename="reddit_posts.xlsx"):
+    rows = load_submission_data_to_table(subreddit, keywords, tags, amount, sort_type, time_filter, time_limit)
     df = pd.DataFrame(rows)
     wb = Workbook()
     ws = wb.active
@@ -150,7 +154,7 @@ def make_keyword_cells_bold_in_cells(keywords, ws):
             if isinstance(cell.value, str):
                 # Check each keyword
                 for keyword in keywords:
-                    if keyword.lower() in cell.value.lower():
+                    if keyword.lower() in cell.value.lower() and keyword != "":
                         # Change the entire cell to bold
                         cell.font = Font(bold=True)
                         break  # Exit after the first keyword is found
@@ -174,15 +178,17 @@ def main():
     reddit = create_reddit_instance(client_id, client_secret, user_agent)
 
     subreddit = reddit.subreddit('pokemon')
-    keywords = ["pokemon"]
+    keywords = []  # '[keyword]', add all the keywords you want to track, leave empty for no keyword search
+    tags = []  # Options: '[tag]', add all the tags you want to track, leave empty for no tag search
     sort_type = 'top'  # Options: 'hot', 'new', 'rising', 'top'
-    time_filter = 'day'  # Options (only works with 'top'): "all", "year", "month", "week", "day", "hour"
-    amount = 1000  # Amount of posts that are being saved
+    time_filter = 'day'  # Options (only works with sort_type = 'top'): "all", "year", "month", "week", "day", "hour"
+    amount = 10  # Amount of posts that are being saved
     time_limit = -1  # Time limit for search in seconds, value -1 is infinite
-    # Search posts and save them to a CSV
+
     save_data_to_xlsx(
         subreddit=subreddit,
         keywords=keywords,
+        tags=tags,
         amount=amount,
         sort_type=sort_type,
         time_filter=time_filter,
