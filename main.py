@@ -33,10 +33,13 @@ def load_submission_data_to_table(subreddit, keywords, tags, amount, sort_type, 
             return
     try:
         start_time = time.time()
+        prev_minutes, prev_seconds = -1, -1
         for submission in ranking:
             elapsed_time = time.time() - start_time
             minutes, seconds = divmod(int(elapsed_time), 60)
-            print(f"Time passed: {minutes:02}:{seconds:02}")
+            if prev_minutes != minutes or prev_seconds != seconds:
+                print(f"Time passed: {minutes:02}:{seconds:02}")
+            prev_minutes, prev_seconds = minutes, seconds
             if added_rows >= amount:
                 print("Amount reached... stopping search.")
                 return rows
@@ -78,7 +81,7 @@ def load_submission_data_to_table(subreddit, keywords, tags, amount, sort_type, 
                     "Depth": 0
                 })
                 added_rows += 1
-            print(f'{added_rows} Posts already added to table')
+            print(f'Posts added: {added_rows}')
         print("All posts searched... stopping search.")
     finally:
         return rows
@@ -118,7 +121,7 @@ def save_data_to_xlsx(subreddit, keywords, tags, amount, sort_type, time_filter,
     wb = Workbook()
     ws = wb.active
     ws.append(["Username", "Content"])
-    colors = ['F0F0F0', 'D3D3D3', 'B0C4DE',  'ADD8E6',  'E6E6FA',  'FFFACD',  'F5DEB3',  'FAFAD2',  'E0FFFF',  'F5F5F5']
+    colors = ['F0F0F0', 'D3D3D3', 'B0C4DE', 'ADD8E6', 'E6E6FA', 'FFFACD', 'F5DEB3', 'FAFAD2', 'E0FFFF', 'F5F5F5']
     for _, row in df.iterrows():
         depth = row["Depth"]
         color_index = depth % len(colors)
@@ -178,10 +181,10 @@ def main():
     reddit = create_reddit_instance(client_id, client_secret, user_agent)
 
     subreddit = reddit.subreddit('pokemon')
-    keywords = []  # '[keyword]', add all the keywords you want to track, leave empty for no keyword search
+    keywords = ['totodile']  # '[keyword]', add all the keywords you want to track, leave empty for no keyword search
     tags = []  # Options: '[tag]', add all the tags you want to track, leave empty for no tag search
     sort_type = 'top'  # Options: 'hot', 'new', 'rising', 'top'
-    time_filter = 'day'  # Options (only works with sort_type = 'top'): "all", "year", "month", "week", "day", "hour"
+    time_filter = 'week'  # Options (only works with sort_type = 'top'): "all", "year", "month", "week", "day", "hour"
     amount = 10  # Amount of posts that are being saved
     time_limit = -1  # Time limit for search in seconds, value -1 is infinite
 
